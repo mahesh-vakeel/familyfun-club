@@ -99,6 +99,13 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .feedback.ok { color: var(--good); } .feedback.no { color: var(--bad); }
 .center { text-align: center; }
 .winner .big { font-size: 64px; text-align: center; }
+.modes { display: grid; gap: 8px; }
+.mode { border: 2px solid var(--line); background: var(--bg); border-radius: 14px; padding: 10px 12px; text-align: left; display: flex; gap: 12px; align-items: center; }
+.mode .e { font-size: 28px; flex: none; }
+.mode[aria-pressed="true"] { border-color: var(--marigold); background: color-mix(in srgb, var(--marigold) 22%, var(--surface)); }
+.opt { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.opt .votes { font-size: .85rem; color: var(--muted); flex: none; }
+:root { --vote: color-mix(in srgb, var(--marigold) 28%, transparent); }
 </style>
 </head>
 <body>
@@ -163,10 +170,60 @@ const BANK = {
     ["I give you milk and I say moo.", "Cow"]
   ]}
 };
+
+// ---------- More games ----------
+const TRUE_FALSE = [
+  ["An octopus has three hearts.", true], ["Honey can stay good to eat for thousands of years.", true],
+  ["The Great Wall of China is easy to see from the Moon.", false], ["A group of flamingos is called a flamboyance.", true],
+  ["Sharks are mammals.", false], ["The Taj Mahal is in Delhi.", false], ["Lightning never strikes the same place twice.", false],
+  ["Goldfish only remember things for three seconds.", false], ["An ostrich's eye is bigger than its brain.", true],
+  ["A day on Venus is longer than its year.", true], ["Penguins live at the North Pole.", false], ["Spiders are insects.", false],
+  ["Scotland's national animal is the unicorn.", true], ["Chocolate is dangerous for dogs.", true], ["Bats are blind.", false],
+  ["A tomato is a fruit.", true], ["The Sun is a star.", true], ["Kerala is called God's Own Country.", true],
+  ["Diwali is known as the festival of colours.", false], ["Water boils at 100°C at sea level.", true],
+  ["Elephants can jump.", false], ["The IPL started in 2008.", true], ["Mount Everest is the tallest mountain above sea level.", true],
+  ["Humans have four lungs.", false], ["Cows have best friends and get stressed when apart.", true],
+  ["The Moon has its own light.", false], ["A shrimp's heart is in its head.", true], ["Camels store water in their humps.", false]
+];
+const RIDDLES = [
+  ["What has keys but can't open locks?", ["piano", "keyboard"]],
+  ["What has hands but cannot clap?", ["clock", "watch"]],
+  ["What gets wetter the more it dries?", ["towel"]],
+  ["What has a neck but no head?", ["bottle"]],
+  ["What can you catch but not throw?", ["cold", "a cold"]],
+  ["What goes up but never comes down?", ["age", "your age"]],
+  ["What has many teeth but cannot bite?", ["comb"]],
+  ["What has one eye but cannot see?", ["needle"]],
+  ["What is full of holes but still holds water?", ["sponge"]],
+  ["I'm tall when I'm young and short when I'm old. What am I?", ["candle"]],
+  ["What has to be broken before you can use it?", ["egg"]],
+  ["Which month has 28 days?", ["all", "every month", "all of them", "all months"]],
+  ["What comes down but never goes up?", ["rain"]],
+  ["What has a head and a tail but no body?", ["coin"]],
+  ["What belongs to you, but other people use it more?", ["name", "your name"]],
+  ["What has words but never speaks?", ["book"]],
+  ["What has legs but cannot walk?", ["table", "chair"]],
+  ["The more you take, the more you leave behind. What are they?", ["footsteps", "steps"]],
+  ["What runs but never walks?", ["water", "river", "tap", "nose"]],
+  ["What can travel around the world while staying in a corner?", ["stamp", "postage stamp"]]
+];
+const LIKELY = [
+  "fall asleep during a movie", "eat the last sweet without asking", "be late for a family function",
+  "cry while watching a film", "win a dance competition", "lose their phone while holding it", "become famous",
+  "start singing at a party", "finish a whole box of mithai", "spend the most time on WhatsApp", "give the best advice",
+  "get lost even with Google Maps", "try cooking something new", "laugh at their own joke", "plan the next family trip",
+  "win at antakshari", "stay up the latest", "talk the longest on a phone call", "forget a birthday", "win a game show"
+];
+const MODES = {
+  guess:  { name: "Guess it", icon: "🎬", blurb: "Movie, place or animal from emoji clues", seconds: 20 },
+  likely: { name: "Who's most likely to…", icon: "🙋", blurb: "Vote for a family member. Agree with the family to score", seconds: 20 },
+  tf:     { name: "True or false", icon: "⚡", blurb: "Quick-fire facts. Fastest correct answers get bonus points", seconds: 10 },
+  riddle: { name: "Riddles", icon: "🧩", blurb: "Type your answer. Spelling is forgiven", seconds: 30 }
+};
 const CATS = ["mixed", "movies", "places", "animals"];
 const AVATARS = ["😀", "👵", "👴", "👩", "👨", "👧", "👦", "🧒", "🐯", "🦊", "🐼", "🦄"];
-const SECONDS = 20;          // time to answer each question
-const POINTS = 10;           // per correct answer
+const POINTS = 10;            // per correct answer
+const SPEED_BONUS = [5, 3, 1]; // true or false: first, second and third correct answers
 
 // ---------- Helpers ----------
 const app = document.getElementById("app");
@@ -176,17 +233,48 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 };
+const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\b(a|an|the)\b/g, "").replace(/\s+/g, " ").trim();
+function close(a, b) {   // allow one typo in longer words
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1 || b.length < 5) return false;
+  if (a.length === b.length) {   // two neighbouring letters swapped, e.g. "candel"
+    const d = [...a].map((c, i) => c !== b[i] ? i : -1).filter(i => i >= 0);
+    if (d.length === 2 && d[1] === d[0] + 1 && a[d[0]] === b[d[1]] && a[d[1]] === b[d[0]]) return true;
+  }
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (a.length < b.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
 function newCode() {
   const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
   return s;
 }
-function buildQuestions(cat, count) {
+
+// Each question: { kind: "choice" | "text" | "vote", cat?, clue, ask, options? } plus a secret answer list.
+function buildQuestions(mode, cat, count, players) {
+  if (mode === "tf") {
+    return shuffle(TRUE_FALSE).slice(0, count).map(([fact, yes]) =>
+      ({ q: { kind: "choice", icon: "⚡", label: "True or false", clue: fact, ask: "True or false?", text: true, options: ["True", "False"] }, answers: [yes ? "True" : "False"] }));
+  }
+  if (mode === "riddle") {
+    return shuffle(RIDDLES).slice(0, count).map(([riddle, answers]) =>
+      ({ q: { kind: "text", icon: "🧩", label: "Riddle", clue: riddle, ask: "Type your answer", text: true }, answers }));
+  }
+  if (mode === "likely") {
+    const options = players.map(p => p.id);
+    return shuffle(LIKELY).slice(0, count).map(thing =>
+      ({ q: { kind: "vote", icon: "🙋", label: "Family vote", clue: `Who is most likely to ${thing}?`, ask: "Vote for one person", text: true, options }, answers: [] }));
+  }
   const cats = cat === "mixed" ? ["movies", "places", "animals"] : [cat];
-  const pool = shuffle(cats.flatMap(c => BANK[c].items.map(([clue, answer]) => ({ cat: c, clue, answer }))));
-  return pool.slice(0, Math.min(count, pool.length)).map(q => {
-    const others = shuffle(BANK[q.cat].items.map(x => x[1]).filter(a => a !== q.answer)).slice(0, 3);
-    return { cat: q.cat, clue: q.clue, answer: q.answer, options: shuffle([q.answer, ...others]) };
+  const pool = shuffle(cats.flatMap(c => BANK[c].items.map(([clue, answer]) => ({ c, clue, answer }))));
+  return pool.slice(0, count).map(({ c, clue, answer }) => {
+    const others = shuffle(BANK[c].items.map(x => x[1]).filter(a => a !== answer)).slice(0, 3);
+    return { q: { kind: "choice", icon: BANK[c].icon, label: BANK[c].name, clue, ask: BANK[c].ask, text: c === "animals", options: shuffle([answer, ...others]) }, answers: [answer] };
   });
 }
 
@@ -195,16 +283,11 @@ const S = {
   uid: null,
   name: store.get("ffc-name", ""),
   avatar: store.get("ffc-avatar", AVATARS[0]),
+  mode: store.get("ffc-mode", "guess"),
   cat: store.get("ffc-cat", "mixed"),
   count: store.get("ffc-count", 10),
   code: (new URLSearchParams(location.search).get("game") || "").toUpperCase().slice(0, 4),
-  game: null,        // live game doc
-  players: [],       // live players
-  myPick: null,      // { q, pick }
-  error: "",
-  unsub: [],
-  tick: null,
-  revealing: false
+  game: null, players: [], myPick: null, error: "", unsub: [], tick: null, revealing: false
 };
 
 let db, auth;
@@ -215,30 +298,25 @@ try {
   app.innerHTML = `<section class="panel"><h2>Setup needed</h2><p>Add your Firebase settings at the top of index.html.</p></section>`;
   throw e;
 }
-
-onAuthStateChanged(auth, user => {
-  if (user) { S.uid = user.uid; render(); }
-});
+onAuthStateChanged(auth, user => { if (user) { S.uid = user.uid; render(); } });
 signInAnonymously(auth).catch(e => {
   app.innerHTML = `<section class="panel"><h2>Can't connect</h2><p class="err">${esc(e.message)}</p>
-  <p class="note">Check that Anonymous sign-in is turned on in the Firebase console.</p></section>`;
+  <p class="note">Check your internet connection and reload the page.</p></section>`;
 });
 
 const gameRef = code => doc(db, "games", code);
 const isHost = () => S.game && S.game.hostUid === S.uid;
+const playerName = id => S.players.find(p => p.id === id)?.name || "Someone";
 
 // ---------- Game actions ----------
 async function hostGame() {
   if (!saveProfile()) return;
   let code = newCode();
   for (let i = 0; i < 5 && (await getDoc(gameRef(code))).exists(); i++) code = newCode();
-  const qs = buildQuestions(S.cat, S.count);
   await setDoc(gameRef(code), {
-    hostUid: S.uid, status: "lobby", cat: S.cat, total: qs.length, qIndex: -1,
-    questions: qs.map(({ cat, clue, options }) => ({ cat, clue, options })),
-    answer: null, deadline: 0, createdAt: serverTimestamp()
+    hostUid: S.uid, status: "lobby", mode: S.mode, cat: S.cat, count: S.count, total: 0, qIndex: -1,
+    questions: [], reveal: null, deadline: 0, createdAt: serverTimestamp()
   });
-  await setDoc(doc(db, "games", code, "secret", "key"), { answers: qs.map(q => q.answer) });
   await joinGame(code);
 }
 
@@ -271,17 +349,28 @@ function watch(code) {
   S.tick = setInterval(() => { updateTimer(); hostCheck(); }, 250);
 }
 
+async function startGame() {
+  const g = S.game;
+  const built = buildQuestions(g.mode, g.cat, g.count, S.players);
+  // Firestore cannot store lists inside lists, so answers are kept as a map by question number.
+  await setDoc(doc(db, "games", S.code, "secret", "key"), { answers: Object.fromEntries(built.map((b, i) => [String(i), b.answers])) });
+  await updateDoc(gameRef(S.code), { questions: built.map(b => b.q), total: built.length });
+  S.game = { ...g, questions: built.map(b => b.q), total: built.length };
+  await startNext();
+}
+
 async function startNext() {
   const g = S.game, next = g.qIndex + 1;
   if (next >= g.total) { await updateDoc(gameRef(S.code), { status: "done" }); return; }
-  await updateDoc(gameRef(S.code), { status: "question", qIndex: next, answer: null, deadline: Date.now() + SECONDS * 1000 });
+  await updateDoc(gameRef(S.code), { status: "question", qIndex: next, reveal: null, deadline: Date.now() + MODES[g.mode].seconds * 1000 });
 }
 
 async function pick(option) {
   const g = S.game;
-  if (g.status !== "question" || S.myPick?.q === g.qIndex) return;
+  option = String(option || "").trim().slice(0, 40);
+  if (!option || g.status !== "question" || S.myPick?.q === g.qIndex) return;
   S.myPick = { q: g.qIndex, pick: option }; render();
-  await setDoc(doc(db, "games", S.code, "answers", `${S.uid}_${g.qIndex}`), { uid: S.uid, q: g.qIndex, pick: option, at: Date.now() });
+  await setDoc(doc(db, "games", S.code, "answers", `${S.uid}_${g.qIndex}`), { uid: S.uid, q: g.qIndex, pick: option, at: serverTimestamp() });
   await updateDoc(doc(db, "games", S.code, "players", S.uid), { answered: g.qIndex });
 }
 
@@ -293,16 +382,37 @@ async function hostCheck() {
   if (!allIn && Date.now() < g.deadline) return;
   S.revealing = true;
   try {
-    const q = g.qIndex;
-    const key = (await getDoc(doc(db, "games", S.code, "secret", "key"))).data().answers[q];
-    const ans = await getDocs(query(collection(db, "games", S.code, "answers"), where("q", "==", q)));
+    const qi = g.qIndex, q = g.questions[qi];
+    const snap = await getDocs(query(collection(db, "games", S.code, "answers"), where("q", "==", qi)));
+    const ans = snap.docs.map(d => d.data()).filter(a => S.players.some(p => p.id === a.uid))
+      .sort((a, b) => (a.at?.toMillis?.() || 0) - (b.at?.toMillis?.() || 0));
+    const points = {}, correctIds = [];
+    let reveal;
+    if (q.kind === "vote") {
+      const counts = {};
+      ans.forEach(a => { counts[a.pick] = (counts[a.pick] || 0) + 1; });
+      const top = Math.max(0, ...Object.values(counts));
+      const winners = Object.keys(counts).filter(k => counts[k] === top);
+      ans.forEach(a => { if (top > 0 && winners.includes(a.pick)) { points[a.uid] = POINTS; correctIds.push(a.uid); } });
+      reveal = { answer: winners.map(playerName).join(" & ") || "Nobody voted", counts, winners };
+    } else {
+      const key = (await getDoc(doc(db, "games", S.code, "secret", "key"))).data().answers[String(qi)];
+      const ok = q.kind === "text"
+        ? p => key.some(k => close(norm(p), norm(k)))
+        : p => p === key[0];
+      let rank = 0;
+      ans.forEach(a => {
+        if (!ok(a.pick)) return;
+        points[a.uid] = POINTS + (g.mode === "tf" ? (SPEED_BONUS[rank] || 0) : 0);
+        rank++; correctIds.push(a.uid);
+      });
+      reveal = { answer: key[0] };
+    }
+    reveal.points = points;
+    reveal.picks = Object.fromEntries(ans.map(a => [a.uid, a.pick]));
     const batch = writeBatch(db);
-    ans.forEach(a => {
-      const d = a.data();
-      const p = S.players.find(x => x.id === d.uid);
-      if (p && d.pick === key) batch.update(doc(db, "games", S.code, "players", d.uid), { score: increment(POINTS), correct: increment(1) });
-    });
-    batch.update(gameRef(S.code), { status: "reveal", answer: key });
+    correctIds.forEach(id => batch.update(doc(db, "games", S.code, "players", id), { score: increment(points[id]), correct: increment(1) }));
+    batch.update(gameRef(S.code), { status: "reveal", reveal });
     await batch.commit();
   } finally { S.revealing = false; }
 }
@@ -339,7 +449,7 @@ function board(showAnswered) {
 function viewStart() {
   return `
     <header class="brand"><div class="mark" aria-hidden="true">🎉</div>
-      <div><h1>FamilyFun Club</h1><p>Guess the movie, place or animal, live with your family.</p></div></header>
+      <div><h1>FamilyFun Club</h1><p>Live family games. Everyone plays on their own phone.</p></div></header>
     <section class="panel">
       <h2>Who are you?</h2>
       <input type="text" id="name" maxlength="20" placeholder="Your name, e.g. Dadi or Riya" value="${esc(S.name)}" aria-label="Your name">
@@ -357,21 +467,28 @@ function viewStart() {
     </section>
     <section class="panel">
       <h2>Or host a new game</h2>
+      <div class="modes">${Object.entries(MODES).map(([k, m]) => `
+        <button type="button" class="mode" data-act="mode" data-mode="${k}" aria-pressed="${S.mode === k}">
+          <span class="e" aria-hidden="true">${m.icon}</span><span><strong>${m.name}</strong><br><span class="note">${m.blurb}</span></span>
+        </button>`).join("")}</div>
+      ${S.mode === "guess" ? `<div class="label">Category</div>
       <div class="chips">${CATS.map(c => `<button type="button" class="chip" data-act="cat" data-cat="${c}" aria-pressed="${S.cat === c}">
-        <span class="e" aria-hidden="true">${c === "mixed" ? "🎲" : BANK[c].icon}</span>${c === "mixed" ? "Mix of all" : BANK[c].name}</button>`).join("")}</div>
+        <span class="e" aria-hidden="true">${c === "mixed" ? "🎲" : BANK[c].icon}</span>${c === "mixed" ? "Mix of all" : BANK[c].name}</button>`).join("")}</div>` : ""}
       <div class="label">Number of questions</div>
       <div class="seg" role="group" aria-label="Number of questions">${[5, 10, 15].map(n => `<button type="button" data-act="count" data-n="${n}" aria-pressed="${S.count === n}">${n}</button>`).join("")}</div>
       <button class="btn wide" data-act="host">Host game</button>
-      <p class="note">Everyone answers the same question at the same time. ${SECONDS} seconds each, ${POINTS} points for a correct answer.</p>
+      <p class="note">${MODES[S.mode].seconds} seconds per question, ${POINTS} points for each correct answer.</p>
     </section>`;
 }
 
 function viewLobby() {
+  const g = S.game, m = MODES[g.mode];
   const link = location.origin + location.pathname + "?game=" + S.code;
   const wa = "https://wa.me/?text=" + encodeURIComponent(`Join our FamilyFun Club game! Code ${S.code}: ${link}`);
+  const canStart = g.mode !== "likely" || S.players.length >= 2;
   return `
     <section class="panel center">
-      <p class="label">Game code</p>
+      <p class="label">${m.icon} ${m.name} · game code</p>
       <div class="bigcode">${esc(S.code)}</div>
       <p class="note">Family members open the link, type their name and join.</p>
       <div class="row" style="justify-content:center">
@@ -383,26 +500,48 @@ function viewLobby() {
       <h2>${S.players.length} ${S.players.length === 1 ? "player" : "players"} here</h2>
       ${board(false)}
       ${isHost()
-        ? `<button class="btn wide" data-act="next">Start game</button>`
+        ? `<button class="btn wide" data-act="start" ${canStart ? "" : "disabled"}>Start game</button>
+           ${canStart ? "" : `<p class="note center">The family vote needs at least 2 players.</p>`}`
         : `<p class="note center">Waiting for the host to start…</p>`}
       <button class="btn ghost" data-act="leave">Leave game</button>
     </section>`;
 }
 
 function viewQuestion() {
-  const g = S.game, q = g.questions[g.qIndex], reveal = g.status === "reveal";
-  const mine = S.myPick && S.myPick.q === g.qIndex ? S.myPick.pick : null;
-  const opts = q.options.map(o => {
-    let cls = "opt";
-    if (reveal) { if (o === g.answer) cls += " right"; else if (o === mine) cls += " wrong"; }
-    else if (o === mine) cls += " picked";
-    return `<button class="${cls}" data-act="pick" data-opt="${esc(o)}" ${reveal || mine ? "disabled" : ""}>${esc(o)}</button>`;
-  }).join("");
-  const isText = q.cat === "animals";
+  const g = S.game, q = g.questions[g.qIndex], rv = g.status === "reveal" ? g.reveal : null;
+  const mine = S.myPick && S.myPick.q === g.qIndex ? S.myPick.pick : (rv?.picks?.[S.uid] ?? null);
+  let body;
+  if (q.kind === "text") {
+    body = rv
+      ? `<div class="list">${S.players.map(p => `<div class="p"><span class="av" aria-hidden="true">${esc(p.avatar)}</span>
+          <span class="nm">${esc(p.name)}<br><span class="note">${rv.picks?.[p.id] ? esc(rv.picks[p.id]) : "no answer"}</span></span>
+          <span class="tag ${rv.points?.[p.id] ? "done" : ""}">${rv.points?.[p.id] ? "✓ +" + rv.points[p.id] : "✗"}</span></div>`).join("")}</div>`
+      : mine ? `<p class="center"><strong>Your answer:</strong> ${esc(mine)}</p>`
+      : `<form id="typed" class="row" autocomplete="off"><input type="text" id="typedAnswer" maxlength="40" placeholder="Your answer" aria-label="Your answer">
+          <button class="btn" type="submit">Send</button></form>`;
+  } else {
+    const total = rv?.counts ? Object.values(rv.counts).reduce((a, b) => a + b, 0) : 0;
+    body = `<div class="options">${q.options.map(o => {
+      const label = q.kind === "vote" ? (S.players.find(p => p.id === o) ? `${S.players.find(p => p.id === o).avatar} ${playerName(o)}` : "Someone who left") : o;
+      let cls = "opt";
+      if (rv) {
+        if (q.kind === "vote" ? rv.winners?.includes(o) : o === rv.answer) cls += " right";
+        else if (o === mine) cls += " wrong";
+      } else if (o === mine) cls += " picked";
+      const votes = rv?.counts ? (rv.counts[o] || 0) : null;
+      const fill = votes != null && total ? Math.round(100 * votes / total) : 0;
+      return `<button class="${cls}" data-act="pick" data-opt="${esc(o)}" ${rv || mine ? "disabled" : ""}
+        ${votes != null ? `style="background-image:linear-gradient(90deg, var(--vote) ${fill}%, transparent ${fill}%)"` : ""}>
+        <span>${esc(label)}</span>${votes != null ? `<span class="votes">${votes} ${votes === 1 ? "vote" : "votes"}</span>` : ""}</button>`;
+    }).join("")}</div>`;
+  }
   let foot;
-  if (reveal) {
-    const ok = mine === g.answer;
-    foot = `<p class="feedback ${ok ? "ok" : "no"}" role="status">${ok ? `Correct! +${POINTS}` : mine ? `Not quite. It was ${esc(g.answer)}.` : `Time's up. It was ${esc(g.answer)}.`}</p>
+  if (rv) {
+    const got = rv.points?.[S.uid] || 0;
+    const msg = q.kind === "vote"
+      ? (got ? `You agreed with the family! +${got}` : `The family picked ${esc(rv.answer)}.`)
+      : got ? `Correct! +${got}` : mine ? `Not quite. It was ${esc(rv.answer)}.` : `Time's up. It was ${esc(rv.answer)}.`;
+    foot = `<p class="feedback ${got ? "ok" : "no"}" role="status">${msg}</p>
       ${board(false)}
       ${isHost() ? `<button class="btn wide" data-act="next">${g.qIndex + 1 >= g.total ? "See the winner" : "Next question"}</button>` : `<p class="note center">Waiting for the host…</p>`}`;
   } else {
@@ -410,10 +549,10 @@ function viewQuestion() {
   }
   return `
     <section class="panel">
-      <div class="progress"><span>${BANK[q.cat].icon} ${BANK[q.cat].name}</span><span>Question ${g.qIndex + 1} of ${g.total}</span></div>
-      ${reveal ? "" : `<div class="timer" aria-hidden="true"><div id="bar" style="width:100%"></div></div>`}
-      <div class="clue"><div class="${isText ? "text" : "emoji"}">${esc(q.clue)}</div><div class="ask">${BANK[q.cat].ask}</div></div>
-      <div class="options">${opts}</div>
+      <div class="progress"><span>${q.icon} ${esc(q.label)}</span><span>Question ${g.qIndex + 1} of ${g.total}</span></div>
+      ${rv ? "" : `<div class="timer" aria-hidden="true"><div id="bar" style="width:100%"></div></div>`}
+      <div class="clue"><div class="${q.text ? "text" : "emoji"}">${esc(q.clue)}</div><div class="ask">${esc(q.ask)}</div></div>
+      ${body}
       ${foot}
     </section>`;
 }
@@ -434,16 +573,15 @@ function viewDone() {
 
 function render() {
   if (!S.uid) { app.innerHTML = `<p class="note">Connecting…</p>`; return; }
+  const ids = ["name", "code", "typedAnswer"];
+  const vals = Object.fromEntries(ids.map(id => [id, document.getElementById(id)?.value]));
   const active = document.activeElement?.id;
-  const nameVal = document.getElementById("name")?.value;
-  const codeVal = document.getElementById("code")?.value;
   const g = S.game;
   app.innerHTML = !g ? viewStart()
     : g.status === "lobby" ? viewLobby()
     : g.status === "done" ? viewDone()
     : viewQuestion();
-  if (nameVal != null && document.getElementById("name")) document.getElementById("name").value = nameVal;
-  if (codeVal != null && document.getElementById("code")) document.getElementById("code").value = codeVal;
+  ids.forEach(id => { const el = document.getElementById(id); if (el && vals[id] != null) el.value = vals[id]; });
   if (active && document.getElementById(active)) document.getElementById(active).focus();
   updateTimer();
 }
@@ -452,8 +590,14 @@ function updateTimer() {
   const bar = document.getElementById("bar"), g = S.game;
   if (!bar || !g) return;
   const left = Math.max(0, g.deadline - Date.now());
-  bar.style.width = (100 * left / (SECONDS * 1000)) + "%";
+  bar.style.width = (100 * left / (MODES[g.mode].seconds * 1000)) + "%";
 }
+
+app.addEventListener("submit", e => {
+  if (e.target.id !== "typed") return;
+  e.preventDefault();
+  pick(document.getElementById("typedAnswer").value).catch(err => console.warn(err));
+});
 
 app.addEventListener("click", async e => {
   const b = e.target.closest("[data-act]");
@@ -462,10 +606,12 @@ app.addEventListener("click", async e => {
   try {
     switch (b.dataset.act) {
       case "avatar": keepName(); S.avatar = b.dataset.av; render(); break;
+      case "mode": keepName(); S.mode = b.dataset.mode; store.set("ffc-mode", S.mode); render(); break;
       case "cat": keepName(); S.cat = b.dataset.cat; store.set("ffc-cat", S.cat); render(); break;
       case "count": keepName(); S.count = +b.dataset.n; store.set("ffc-count", S.count); render(); break;
       case "host": b.disabled = true; await hostGame(); break;
       case "join": b.disabled = true; await joinGame(document.getElementById("code").value); break;
+      case "start": b.disabled = true; await startGame(); break;
       case "next": b.disabled = true; await startNext(); break;
       case "pick": await pick(b.dataset.opt); break;
       case "leave": leave(); break;
