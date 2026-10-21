@@ -104,9 +104,22 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 <body>
 <main id="app"><p class="note">Loading…</p></main>
 
-<script src="peerjs.min.js"></script>
-<script>
-"use strict";
+<script type="module">
+// ---------- Firebase setup: paste your project's config here ----------
+const firebaseConfig = {
+  apiKey: "AIzaSyAuFqgYmEAfFq8jAbhZLtCDZ0h8OgwYH7s",
+  authDomain: "familifunclub.firebaseapp.com",
+  projectId: "familifunclub",
+  appId: "1:640211555900:web:412568da08a6c29cedd539"
+};
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs,
+  onSnapshot, writeBatch, serverTimestamp, increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 // ---------- Question bank ----------
 const BANK = {
   movies: { name: "Movies", icon: "🎬", ask: "Which movie is this?", items: [
@@ -155,7 +168,6 @@ const AVATARS = ["😀", "👵", "👴", "👩", "👨", "👧", "👦", "🧒",
 const SECONDS = 20;          // time to answer each question
 const POINTS = 10;           // per correct answer
 
-
 // ---------- Helpers ----------
 const app = document.getElementById("app");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -164,7 +176,6 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
 };
-const PREFIX = "familyfun-club-";
 function newCode() {
   const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
@@ -179,180 +190,121 @@ function buildQuestions(cat, count) {
   });
 }
 
-// ---------- Local state ----------
-let myId = store.get("ffc-id", null);
-if (!myId) { myId = Math.random().toString(36).slice(2, 12); store.set("ffc-id", myId); }
-
+// ---------- State ----------
 const S = {
+  uid: null,
   name: store.get("ffc-name", ""),
   avatar: store.get("ffc-avatar", AVATARS[0]),
   cat: store.get("ffc-cat", "mixed"),
   count: store.get("ffc-count", 10),
   code: (new URLSearchParams(location.search).get("game") || "").toUpperCase().slice(0, 4),
-  role: null,        // "host" | "player" | null
-  game: null,        // shared game state (from the host)
-  endsAt: 0,         // local clock time when the current question closes
+  game: null,        // live game doc
+  players: [],       // live players
   myPick: null,      // { q, pick }
   error: "",
-  status: "",        // connecting / lost messages
-  peer: null,
-  conn: null         // player's connection to the host
+  unsub: [],
+  tick: null,
+  revealing: false
 };
 
-// ---------- Host: the host's phone holds the game and sends it to everyone ----------
-const H = { conns: new Set(), answers: [], picks: {}, tick: null, wake: null };
+let db, auth;
+try {
+  const fb = initializeApp(firebaseConfig);
+  db = getFirestore(fb); auth = getAuth(fb);
+} catch (e) {
+  app.innerHTML = `<section class="panel"><h2>Setup needed</h2><p>Add your Firebase settings at the top of index.html.</p></section>`;
+  throw e;
+}
 
-function hostGame() {
+onAuthStateChanged(auth, user => {
+  if (user) { S.uid = user.uid; render(); }
+});
+signInAnonymously(auth).catch(e => {
+  app.innerHTML = `<section class="panel"><h2>Can't connect</h2><p class="err">${esc(e.message)}</p>
+  <p class="note">Check that Anonymous sign-in is turned on in the Firebase console.</p></section>`;
+});
+
+const gameRef = code => doc(db, "games", code);
+const isHost = () => S.game && S.game.hostUid === S.uid;
+
+// ---------- Game actions ----------
+async function hostGame() {
   if (!saveProfile()) return;
-  S.status = "Creating game…"; render();
-  const code = newCode();
-  const peer = new Peer(PREFIX + code);
-  peer.on("open", () => {
-    S.peer = peer; S.role = "host"; S.code = code; S.status = "";
-    const qs = buildQuestions(S.cat, S.count);
-    H.answers = qs.map(q => q.answer);
-    S.game = {
-      status: "lobby", total: qs.length, qIndex: -1, answer: null, remaining: 0,
-      questions: qs.map(({ cat, clue, options }) => ({ cat, clue, options })),
-      players: [{ id: myId, name: S.name, avatar: S.avatar, score: 0, correct: 0, answered: -1, online: true, host: true }]
-    };
-    history.replaceState(null, "", "?game=" + code);
-    keepAwake();
-    clearInterval(H.tick); H.tick = setInterval(hostTick, 250);
-    render();
+  let code = newCode();
+  for (let i = 0; i < 5 && (await getDoc(gameRef(code))).exists(); i++) code = newCode();
+  const qs = buildQuestions(S.cat, S.count);
+  await setDoc(gameRef(code), {
+    hostUid: S.uid, status: "lobby", cat: S.cat, total: qs.length, qIndex: -1,
+    questions: qs.map(({ cat, clue, options }) => ({ cat, clue, options })),
+    answer: null, deadline: 0, createdAt: serverTimestamp()
   });
-  peer.on("connection", conn => {
-    conn.on("open", () => { H.conns.add(conn); });
-    conn.on("data", msg => hostReceive(conn, msg));
-    conn.on("close", () => {
-      H.conns.delete(conn);
-      const p = S.game?.players.find(x => x.id === conn.playerId);
-      if (p) { p.online = false; broadcast(); }
-    });
-  });
-  peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });  // keep the code reachable for late joiners
-  peer.on("error", err => {
-    if (err.type === "unavailable-id") { peer.destroy(); hostGame(); return; }  // code already taken, pick another
-    S.status = ""; S.error = "Connection problem: " + err.type + ". Check your internet and try again.";
-    if (!S.game) { peer.destroy(); }
-    render();
-  });
+  await setDoc(doc(db, "games", code, "secret", "key"), { answers: qs.map(q => q.answer) });
+  await joinGame(code);
 }
 
-function hostReceive(conn, msg) {
-  const g = S.game;
-  if (!g || !msg || typeof msg !== "object") return;
-  if (msg.type === "join") {
-    const id = String(msg.id || "").slice(0, 20), name = String(msg.name || "Player").slice(0, 20), avatar = String(msg.avatar || "😀").slice(0, 8);
-    if (!id) return;
-    conn.playerId = id;
-    let p = g.players.find(x => x.id === id);
-    if (p) Object.assign(p, { name, avatar, online: true });
-    else g.players.push({ id, name, avatar, score: 0, correct: 0, answered: -1, online: true });
-    broadcast();
-  } else if (msg.type === "answer") {
-    recordAnswer(conn.playerId, msg.q, msg.pick);
-  }
-}
-
-function recordAnswer(id, q, pick) {
-  const g = S.game, p = g.players.find(x => x.id === id);
-  if (!p || g.status !== "question" || q !== g.qIndex || p.answered === q) return;
-  if (!g.questions[q].options.includes(pick)) return;
-  p.answered = q; H.picks[id] = pick;
-  broadcast();
-}
-
-function hostTick() {
-  const g = S.game;
-  updateTimer();
-  if (!g || g.status !== "question") return;
-  const here = g.players.filter(p => p.online);
-  const allIn = here.length > 0 && here.every(p => p.answered === g.qIndex);
-  if (!allIn && Date.now() < S.endsAt) return;
-  const key = H.answers[g.qIndex];
-  g.players.forEach(p => { if (H.picks[p.id] === key) { p.score += POINTS; p.correct += 1; } });
-  g.status = "reveal"; g.answer = key;
-  broadcast();
-}
-
-function hostNext() {
-  const g = S.game, next = g.qIndex + 1;
-  if (next >= g.total) { g.status = "done"; broadcast(); return; }
-  g.status = "question"; g.qIndex = next; g.answer = null; H.picks = {};
-  S.endsAt = Date.now() + SECONDS * 1000;
-  broadcast();
-}
-
-function broadcast() {
-  const g = S.game;
-  g.remaining = g.status === "question" ? Math.max(0, S.endsAt - Date.now()) : 0;
-  const msg = { type: "state", game: g };
-  H.conns.forEach(c => { try { c.send(msg); } catch (e) {} });
-  render();
-}
-
-async function keepAwake() {
-  try { H.wake = await navigator.wakeLock?.request("screen"); } catch (e) {}
-}
-document.addEventListener("visibilitychange", () => { if (S.role === "host" && document.visibilityState === "visible") keepAwake(); });
-
-// ---------- Player: connect to the host's phone ----------
-function joinGame(code) {
+async function joinGame(code) {
   if (!saveProfile()) return;
   code = (code || "").toUpperCase().trim();
-  if (code.length !== 4) { S.error = "The game code has 4 letters or numbers."; render(); return; }
-  S.code = code; S.error = ""; S.status = "Connecting to the game…"; render();
-  if (S.peer) { try { S.peer.destroy(); } catch (e) {} }
-  const peer = new Peer();
-  S.peer = peer;
-  let opened = false;
-  const giveUp = setTimeout(() => {
-    if (opened) return;
-    S.status = ""; S.error = `Couldn't reach game ${code}. Check the code, and make sure the host still has the game open.`;
-    try { peer.destroy(); } catch (e) {}
-    render();
-  }, 15000);
-  peer.on("open", () => {
-    const conn = peer.connect(PREFIX + code, { reliable: true });
-    S.conn = conn;
-    conn.on("open", () => {
-      opened = true; clearTimeout(giveUp);
-      S.role = "player"; S.status = "";
-      history.replaceState(null, "", "?game=" + code);
-      conn.send({ type: "join", id: myId, name: S.name, avatar: S.avatar });
-    });
-    conn.on("data", msg => {
-      if (!msg || msg.type !== "state") return;
-      const prev = S.game; S.game = msg.game;
-      S.endsAt = Date.now() + (msg.game.remaining || 0);
-      if (prev && prev.qIndex !== S.game.qIndex) S.myPick = null;
-      render();
-    });
-    conn.on("close", () => {
-      if (S.role !== "player") return;
-      S.status = "lost"; render();
-    });
-  });
-  peer.on("error", err => {
-    clearTimeout(giveUp);
-    S.status = "";
-    S.error = err.type === "peer-unavailable"
-      ? `No game found with code ${code}. Check the code, and make sure the host still has the game open.`
-      : "Connection problem: " + err.type + ". Check your internet and try again.";
-    if (!opened) { S.game = null; S.role = null; }
-    render();
-  });
-  clearInterval(H.tick); H.tick = setInterval(updateTimer, 250);
+  const snap = await getDoc(gameRef(code));
+  if (!snap.exists()) { S.error = `No game found with code ${code}. Check the code and try again.`; render(); return; }
+  const pRef = doc(db, "games", code, "players", S.uid);
+  const existing = await getDoc(pRef);
+  if (existing.exists()) await updateDoc(pRef, { name: S.name, avatar: S.avatar });
+  else await setDoc(pRef, { name: S.name, avatar: S.avatar, score: 0, correct: 0, answered: -1, joinedAt: serverTimestamp() });
+  S.code = code; S.error = "";
+  history.replaceState(null, "", "?game=" + code);
+  watch(code);
 }
 
-// ---------- Shared actions ----------
-function pick(option) {
+function watch(code) {
+  S.unsub.forEach(u => u()); S.unsub = [];
+  S.unsub.push(onSnapshot(gameRef(code), s => {
+    const prev = S.game; S.game = s.data();
+    if (prev && prev.qIndex !== S.game.qIndex) S.myPick = null;
+    render(); hostCheck();
+  }));
+  S.unsub.push(onSnapshot(collection(db, "games", code, "players"), s => {
+    S.players = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    render(); hostCheck();
+  }));
+  clearInterval(S.tick);
+  S.tick = setInterval(() => { updateTimer(); hostCheck(); }, 250);
+}
+
+async function startNext() {
+  const g = S.game, next = g.qIndex + 1;
+  if (next >= g.total) { await updateDoc(gameRef(S.code), { status: "done" }); return; }
+  await updateDoc(gameRef(S.code), { status: "question", qIndex: next, answer: null, deadline: Date.now() + SECONDS * 1000 });
+}
+
+async function pick(option) {
   const g = S.game;
-  if (!g || g.status !== "question" || S.myPick?.q === g.qIndex) return;
-  S.myPick = { q: g.qIndex, pick: option };
-  if (S.role === "host") recordAnswer(myId, g.qIndex, option);
-  else { try { S.conn.send({ type: "answer", q: g.qIndex, pick: option }); } catch (e) {} render(); }
+  if (g.status !== "question" || S.myPick?.q === g.qIndex) return;
+  S.myPick = { q: g.qIndex, pick: option }; render();
+  await setDoc(doc(db, "games", S.code, "answers", `${S.uid}_${g.qIndex}`), { uid: S.uid, q: g.qIndex, pick: option, at: Date.now() });
+  await updateDoc(doc(db, "games", S.code, "players", S.uid), { answered: g.qIndex });
+}
+
+// The host's phone checks whether everyone has answered or time is up, then scores the question.
+async function hostCheck() {
+  const g = S.game;
+  if (!isHost() || !g || g.status !== "question" || S.revealing) return;
+  const allIn = S.players.length > 0 && S.players.every(p => p.answered === g.qIndex);
+  if (!allIn && Date.now() < g.deadline) return;
+  S.revealing = true;
+  try {
+    const q = g.qIndex;
+    const key = (await getDoc(doc(db, "games", S.code, "secret", "key"))).data().answers[q];
+    const ans = await getDocs(query(collection(db, "games", S.code, "answers"), where("q", "==", q)));
+    const batch = writeBatch(db);
+    ans.forEach(a => {
+      const d = a.data();
+      const p = S.players.find(x => x.id === d.uid);
+      if (p && d.pick === key) batch.update(doc(db, "games", S.code, "players", d.uid), { score: increment(POINTS), correct: increment(1) });
+    });
+    batch.update(gameRef(S.code), { status: "reveal", answer: key });
+    await batch.commit();
+  } finally { S.revealing = false; }
 }
 
 function saveProfile() {
@@ -364,26 +316,23 @@ function saveProfile() {
 }
 
 function leave() {
-  try { S.peer?.destroy(); } catch (e) {}
-  clearInterval(H.tick); H.conns.clear();
-  try { H.wake?.release(); } catch (e) {}
-  Object.assign(S, { peer: null, conn: null, game: null, role: null, code: "", myPick: null, status: "", error: "" });
+  S.unsub.forEach(u => u()); S.unsub = []; clearInterval(S.tick);
+  S.game = null; S.players = []; S.code = ""; S.myPick = null;
   history.replaceState(null, "", location.pathname);
   render();
 }
 
 // ---------- Views ----------
-const isHost = () => S.role === "host";
 function ranked() {
-  return S.game.players.slice().sort((a, b) => b.score - a.score || b.correct - a.correct);
+  return S.players.slice().sort((a, b) => (b.score || 0) - (a.score || 0) || (b.correct || 0) - (a.correct || 0));
 }
 function board(showAnswered) {
   const g = S.game;
   return `<div class="list">${ranked().map((p, i) => `
-    <div class="p ${p.id === myId ? "first" : ""}">
+    <div class="p ${p.id === S.uid ? "first" : ""}">
       <span class="rank">${i + 1}</span><span class="av" aria-hidden="true">${esc(p.avatar)}</span>
-      <span class="nm">${esc(p.name)}${p.id === myId ? " (you)" : ""}${p.host ? ' <span class="tag">host</span>' : ""}${p.online ? "" : ' <span class="tag">offline</span>'}</span>
-      ${showAnswered ? `<span class="tag ${p.answered === g.qIndex ? "done" : ""}">${p.answered === g.qIndex ? "answered" : "thinking…"}</span>` : `<span class="pts">${p.score}</span>`}
+      <span class="nm">${esc(p.name)}${p.id === S.uid ? " (you)" : ""}${p.id === g.hostUid ? ' <span class="tag">host</span>' : ""}</span>
+      ${showAnswered ? `<span class="tag ${p.answered === g.qIndex ? "done" : ""}">${p.answered === g.qIndex ? "answered" : "thinking…"}</span>` : `<span class="pts">${p.score || 0}</span>`}
     </div>`).join("")}</div>`;
 }
 
@@ -398,13 +347,12 @@ function viewStart() {
         ${AVATARS.map(a => `<button type="button" data-act="avatar" data-av="${a}" aria-pressed="${a === S.avatar}" aria-label="Avatar ${a}">${a}</button>`).join("")}
       </div>
       ${S.error ? `<p class="err" role="alert">${esc(S.error)}</p>` : ""}
-      ${S.status ? `<p class="note" role="status">${esc(S.status)}</p>` : ""}
     </section>
     <section class="panel">
       <h2>Join a game</h2>
       <div class="row">
         <input type="text" id="code" class="code" maxlength="4" placeholder="CODE" value="${esc(S.code)}" aria-label="Game code" autocomplete="off">
-        <button class="btn" data-act="join" ${S.status ? "disabled" : ""}>Join</button>
+        <button class="btn" data-act="join">Join</button>
       </div>
     </section>
     <section class="panel">
@@ -413,38 +361,30 @@ function viewStart() {
         <span class="e" aria-hidden="true">${c === "mixed" ? "🎲" : BANK[c].icon}</span>${c === "mixed" ? "Mix of all" : BANK[c].name}</button>`).join("")}</div>
       <div class="label">Number of questions</div>
       <div class="seg" role="group" aria-label="Number of questions">${[5, 10, 15].map(n => `<button type="button" data-act="count" data-n="${n}" aria-pressed="${S.count === n}">${n}</button>`).join("")}</div>
-      <button class="btn wide" data-act="host" ${S.status ? "disabled" : ""}>Host game</button>
-      <p class="note">Everyone answers the same question at the same time: ${SECONDS} seconds each, ${POINTS} points for a correct answer. The host's phone runs the game, so keep it open with the screen on.</p>
+      <button class="btn wide" data-act="host">Host game</button>
+      <p class="note">Everyone answers the same question at the same time. ${SECONDS} seconds each, ${POINTS} points for a correct answer.</p>
     </section>`;
-}
-
-function viewLost() {
-  return `<section class="panel center">
-    <h2>Lost connection to the host</h2>
-    <p class="note">Your score is safe on the host's phone. Tap Rejoin to carry on.</p>
-    <button class="btn wide" data-act="rejoin">Rejoin game ${esc(S.code)}</button>
-    <button class="btn ghost" data-act="leave">Leave</button>
-  </section>`;
 }
 
 function viewLobby() {
   const link = location.origin + location.pathname + "?game=" + S.code;
   const wa = "https://wa.me/?text=" + encodeURIComponent(`Join our FamilyFun Club game! Code ${S.code}: ${link}`);
-  const n = S.game.players.length;
   return `
     <section class="panel center">
       <p class="label">Game code</p>
       <div class="bigcode">${esc(S.code)}</div>
-      ${isHost() ? `<p class="note">Family members open the link, type their name and join.</p>
+      <p class="note">Family members open the link, type their name and join.</p>
       <div class="row" style="justify-content:center">
         <a class="btn" href="${wa}" target="_blank" rel="noopener">Share on WhatsApp</a>
         <button class="btn ghost" data-act="copy" data-link="${esc(link)}">Copy link</button>
-      </div>` : `<p class="note">You're in! Waiting for the host to start…</p>`}
+      </div>
     </section>
     <section class="panel">
-      <h2>${n} ${n === 1 ? "player" : "players"} here</h2>
+      <h2>${S.players.length} ${S.players.length === 1 ? "player" : "players"} here</h2>
       ${board(false)}
-      ${isHost() ? `<button class="btn wide" data-act="next">Start game</button>` : ""}
+      ${isHost()
+        ? `<button class="btn wide" data-act="next">Start game</button>`
+        : `<p class="note center">Waiting for the host to start…</p>`}
       <button class="btn ghost" data-act="leave">Leave game</button>
     </section>`;
 }
@@ -458,6 +398,7 @@ function viewQuestion() {
     else if (o === mine) cls += " picked";
     return `<button class="${cls}" data-act="pick" data-opt="${esc(o)}" ${reveal || mine ? "disabled" : ""}>${esc(o)}</button>`;
   }).join("");
+  const isText = q.cat === "animals";
   let foot;
   if (reveal) {
     const ok = mine === g.answer;
@@ -471,7 +412,7 @@ function viewQuestion() {
     <section class="panel">
       <div class="progress"><span>${BANK[q.cat].icon} ${BANK[q.cat].name}</span><span>Question ${g.qIndex + 1} of ${g.total}</span></div>
       ${reveal ? "" : `<div class="timer" aria-hidden="true"><div id="bar" style="width:100%"></div></div>`}
-      <div class="clue"><div class="${q.cat === "animals" ? "text" : "emoji"}">${esc(q.clue)}</div><div class="ask">${BANK[q.cat].ask}</div></div>
+      <div class="clue"><div class="${isText ? "text" : "emoji"}">${esc(q.clue)}</div><div class="ask">${BANK[q.cat].ask}</div></div>
       <div class="options">${opts}</div>
       ${foot}
     </section>`;
@@ -479,11 +420,11 @@ function viewQuestion() {
 
 function viewDone() {
   const r = ranked(), top = r[0];
-  const winners = r.filter(p => p.score === top.score && p.correct === top.correct);
-  const title = winners.length > 1 ? `Tie between ${winners.map(w => esc(w.name)).join(" and ")}!` : `${esc(top.name)} wins!`;
+  const winners = top ? r.filter(p => (p.score || 0) === (top.score || 0) && (p.correct || 0) === (top.correct || 0)) : [];
+  const title = winners.length > 1 ? `Tie between ${winners.map(w => esc(w.name)).join(" and ")}!` : top ? `${esc(top.name)} wins!` : "Game over";
   return `
     <section class="panel winner center">
-      <div class="big" aria-hidden="true">${winners.length > 1 ? "🤝" : esc(top.avatar)}</div>
+      <div class="big" aria-hidden="true">${winners.length > 1 ? "🤝" : esc(top?.avatar || "🎉")}</div>
       <h1>${title}</h1>
       <p class="note">Most points wins. Same points? Most correct answers. Still tied, you share the crown.</p>
     </section>
@@ -492,12 +433,12 @@ function viewDone() {
 }
 
 function render() {
+  if (!S.uid) { app.innerHTML = `<p class="note">Connecting…</p>`; return; }
   const active = document.activeElement?.id;
   const nameVal = document.getElementById("name")?.value;
   const codeVal = document.getElementById("code")?.value;
   const g = S.game;
-  app.innerHTML = S.status === "lost" ? viewLost()
-    : !g || !S.role ? viewStart()
+  app.innerHTML = !g ? viewStart()
     : g.status === "lobby" ? viewLobby()
     : g.status === "done" ? viewDone()
     : viewQuestion();
@@ -508,9 +449,9 @@ function render() {
 }
 
 function updateTimer() {
-  const bar = document.getElementById("bar");
-  if (!bar) return;
-  const left = Math.max(0, S.endsAt - Date.now());
+  const bar = document.getElementById("bar"), g = S.game;
+  if (!bar || !g) return;
+  const left = Math.max(0, g.deadline - Date.now());
   bar.style.width = (100 * left / (SECONDS * 1000)) + "%";
 }
 
@@ -518,24 +459,26 @@ app.addEventListener("click", async e => {
   const b = e.target.closest("[data-act]");
   if (!b || b.disabled) return;
   const keepName = () => { const n = document.getElementById("name"); if (n) S.name = n.value; };
-  switch (b.dataset.act) {
-    case "avatar": keepName(); S.avatar = b.dataset.av; render(); break;
-    case "cat": keepName(); S.cat = b.dataset.cat; store.set("ffc-cat", S.cat); render(); break;
-    case "count": keepName(); S.count = +b.dataset.n; store.set("ffc-count", S.count); render(); break;
-    case "host": S.error = ""; hostGame(); break;
-    case "join": joinGame(document.getElementById("code").value); break;
-    case "rejoin": S.status = ""; joinGame(S.code); break;
-    case "next": if (isHost()) hostNext(); break;
-    case "pick": pick(b.dataset.opt); break;
-    case "leave": leave(); break;
-    case "copy":
-      try { await navigator.clipboard.writeText(b.dataset.link); b.textContent = "Copied!"; }
-      catch (err) { b.textContent = b.dataset.link; }
-      break;
+  try {
+    switch (b.dataset.act) {
+      case "avatar": keepName(); S.avatar = b.dataset.av; render(); break;
+      case "cat": keepName(); S.cat = b.dataset.cat; store.set("ffc-cat", S.cat); render(); break;
+      case "count": keepName(); S.count = +b.dataset.n; store.set("ffc-count", S.count); render(); break;
+      case "host": b.disabled = true; await hostGame(); break;
+      case "join": b.disabled = true; await joinGame(document.getElementById("code").value); break;
+      case "next": b.disabled = true; await startNext(); break;
+      case "pick": await pick(b.dataset.opt); break;
+      case "leave": leave(); break;
+      case "copy":
+        try { await navigator.clipboard.writeText(b.dataset.link); b.textContent = "Copied!"; }
+        catch (err) { b.textContent = b.dataset.link; }
+        break;
+    }
+  } catch (err) {
+    if (S.game) { console.warn(err); return; }  // e.g. an answer sent just after time ran out
+    S.error = "Something went wrong: " + err.message; render();
   }
 });
-
-render();
 </script>
 </body>
 </html>

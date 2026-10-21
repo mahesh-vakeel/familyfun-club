@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /games/{code} {
+      function signedIn() { return request.auth != null; }
+      function game() { return get(/databases/$(database)/documents/games/$(code)).data; }
+      function isHost() { return signedIn() && game().hostUid == request.auth.uid; }
+
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+
+      // Correct answers: only the host's phone can read them.
+      match /secret/{docId} {
+        allow read, write: if isHost();
+      }
+
+      // Players join themselves; only the host can change scores.
+      match /players/{uid} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.score == 0 && request.resource.data.correct == 0;
+        allow update: if isHost() || (signedIn() && request.auth.uid == uid
+          && request.resource.data.score == resource.data.score
+          && request.resource.data.correct == resource.data.correct);
+        allow delete: if isHost() || (signedIn() && request.auth.uid == uid);
+      }
+
+      // One answer per player per question, only while that question is open.
+      match /answers/{answerId} {
+        allow read: if isHost() || (signedIn() && resource.data.uid == request.auth.uid);
+        allow create: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && answerId == request.auth.uid + '_' + string(request.resource.data.q)
+          && game().status == 'question'
+          && request.resource.data.q == game().qIndex;
+      }
+    }
+  }
+}
