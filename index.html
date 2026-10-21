@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FamilyFun Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700&display=swap">
+<style>
+:root {
+  --bg: #e6f2f1; --surface: #ffffff; --ink: #12343b; --muted: #557178; --line: #c9dfdd;
+  --marigold: #ffb703; --marigold-ink: #3a2a00; --pink: #e85d75;
+  --good: #1f8a7a; --good-bg: #d8f1ec; --bad: #c43d52; --bad-bg: #fbe1e5;
+  --display: "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1f23; --surface: #17313a; --ink: #e6f3f2; --muted: #9bb8bd; --line: #29505a;
+    --marigold: #ffc53d; --marigold-ink: #2a1e00; --pink: #f07a8e;
+    --good: #5fd3bf; --good-bg: #173f3a; --bad: #ff8a9b; --bad-bg: #44222a;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(20px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+}
+main { max-width: 520px; margin: 0 auto; display: grid; gap: 18px; }
+h1, h2 { font-family: var(--display); line-height: 1.1; margin: 0; text-wrap: balance; }
+h1 { font-size: 2.1rem; font-weight: 800; }
+h2 { font-size: 1.45rem; font-weight: 700; }
+p { margin: 0; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .mark { width: 48px; height: 48px; border-radius: 14px; background: var(--marigold); display: grid; place-items: center; font-size: 28px; flex: none; }
+.brand p { color: var(--muted); font-size: .95rem; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.label { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+input[type="text"] {
+  flex: 1 1 160px; min-width: 0; font: inherit; color: var(--ink); background: var(--bg);
+  border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px;
+}
+input.code { text-transform: uppercase; letter-spacing: .3em; font-family: var(--display); font-weight: 700; font-size: 1.3rem; }
+input[type="text"]:focus { outline: none; border-color: var(--marigold); }
+button { font: inherit; cursor: pointer; color: inherit; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid var(--pink); outline-offset: 2px; }
+.btn {
+  border: none; border-radius: 14px; padding: 12px 18px; font-family: var(--display); font-weight: 700; font-size: 1.1rem;
+  background: var(--marigold); color: var(--marigold-ink); box-shadow: 0 3px 0 color-mix(in srgb, var(--marigold) 60%, #000);
+  text-decoration: none; text-align: center;
+}
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--marigold) 60%, #000); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.wide { width: 100%; padding: 15px; font-size: 1.25rem; }
+.btn.ghost { background: transparent; color: var(--ink); box-shadow: none; border: 2px solid var(--line); }
+.avatars { display: flex; gap: 6px; flex-wrap: wrap; }
+.avatars button { width: 42px; height: 42px; border-radius: 12px; border: 2px solid var(--line); background: var(--bg); font-size: 22px; padding: 0; }
+.avatars button[aria-pressed="true"] { border-color: var(--marigold); background: color-mix(in srgb, var(--marigold) 25%, var(--surface)); }
+.chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.chip { border: 2px solid var(--line); background: var(--bg); border-radius: 14px; padding: 10px; text-align: left; display: flex; gap: 10px; align-items: center; font-weight: 700; }
+.chip span.e { font-size: 24px; }
+.chip[aria-pressed="true"], .seg button[aria-pressed="true"] { border-color: var(--marigold); background: color-mix(in srgb, var(--marigold) 22%, var(--surface)); }
+.seg { display: flex; gap: 8px; }
+.seg button { flex: 1; border: 2px solid var(--line); background: var(--bg); border-radius: 12px; padding: 8px; font-weight: 700; }
+.bigcode { font-family: var(--display); font-weight: 800; font-size: 3rem; letter-spacing: .25em; text-align: center; line-height: 1; padding: 8px 0 0 .25em; }
+.note { font-size: .88rem; color: var(--muted); }
+.err { color: var(--bad); font-weight: 700; }
+.list { display: grid; gap: 8px; }
+.p { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--bg); }
+.p.first { background: color-mix(in srgb, var(--marigold) 30%, var(--surface)); }
+.p .rank { font-family: var(--display); font-weight: 800; font-size: 1.2rem; width: 24px; color: var(--muted); }
+.p .av { font-size: 26px; }
+.p .nm { flex: 1; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.p .pts { font-family: var(--display); font-weight: 800; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.p .tag { font-size: .8rem; font-weight: 700; color: var(--muted); }
+.p .tag.done { color: var(--good); }
+.progress { display: flex; justify-content: space-between; color: var(--muted); font-size: .9rem; font-weight: 700; }
+.timer { height: 8px; border-radius: 99px; background: var(--bg); overflow: hidden; }
+.timer > div { height: 100%; background: var(--marigold); transition: width .25s linear; }
+.clue { text-align: center; padding: 24px 12px; border-radius: 16px; background: var(--bg); display: grid; gap: 6px; }
+.clue .emoji { font-size: clamp(44px, 14vw, 64px); line-height: 1.2; letter-spacing: .08em; }
+.clue .text { font-family: var(--display); font-size: 1.35rem; font-weight: 700; }
+.clue .ask { color: var(--muted); font-weight: 700; }
+.options { display: grid; gap: 10px; }
+.opt { border: 2px solid var(--line); background: var(--surface); border-radius: 14px; padding: 14px 16px; text-align: left; font-weight: 700; font-size: 1.05rem; }
+.opt:hover:not(:disabled) { border-color: var(--marigold); }
+.opt.picked { border-color: var(--marigold); background: color-mix(in srgb, var(--marigold) 22%, var(--surface)); }
+.opt.right { border-color: var(--good); background: var(--good-bg); }
+.opt.wrong { border-color: var(--bad); background: var(--bad-bg); }
+.opt:disabled { cursor: default; }
+.feedback { text-align: center; font-family: var(--display); font-size: 1.4rem; font-weight: 700; }
+.feedback.ok { color: var(--good); } .feedback.no { color: var(--bad); }
+.center { text-align: center; }
+.winner .big { font-size: 64px; text-align: center; }
+</style>
+</head>
+<body>
+<main id="app"><p class="note">Loading…</p></main>
+
+<script src="peerjs.min.js"></script>
+<script>
+"use strict";
+// ---------- Question bank ----------
+const BANK = {
+  movies: { name: "Movies", icon: "🎬", ask: "Which movie is this?", items: [
+    ["🦁👑🌅", "The Lion King"], ["❄️👸⛄", "Frozen"], ["🚢🧊💔", "Titanic"], ["🦖🏝️🚙", "Jurassic Park"],
+    ["🐠🔍🌊", "Finding Nemo"], ["⚡🧙‍♂️🦉", "Harry Potter"], ["🏏🌾☀️👑", "Lagaan"], ["🤼‍♀️👨‍👧‍👧🥇", "Dangal"],
+    ["3️⃣🎓🤪", "3 Idiots"], ["🚂❤️🌼", "Dilwale Dulhania Le Jayenge"], ["⚔️👑🏞️💧", "Baahubali"], ["🐯🚣🌊", "Life of Pi"],
+    ["👽📞🏠", "E.T."], ["🤖🌱❤️", "WALL-E"], ["🏠🎈👴", "Up"], ["🧞‍♂️🪔🧕", "Aladdin"],
+    ["🐼🥋🥟", "Kung Fu Panda"], ["🔥💧🤝", "RRR"], ["🐎🔫🪙", "Sholay"], ["⭐🌍👦🎨", "Taare Zameen Par"],
+    ["🕷️🧑🏙️", "Spider-Man"], ["🐀👨‍🍳🇫🇷", "Ratatouille"]
+  ]},
+  places: { name: "Places", icon: "🗺️", ask: "Which place is this?", items: [
+    ["🗼🥐🎨", "Paris"], ["🕌🤍🌙", "Taj Mahal"], ["🗽🍎🚕", "New York"], ["🏖️🥥⛪", "Goa"],
+    ["🏔️🚣🌷", "Kashmir"], ["🐫🏜️🏰", "Rajasthan"], ["🌉🌫️🚋", "San Francisco"], ["🦘🏄🐨", "Australia"],
+    ["🍣🗻🌸", "Japan"], ["🍕🛵🏛️", "Italy"], ["🐘🛶🌴", "Kerala"], ["🎬🌊🚆", "Mumbai"],
+    ["🔺🐪☀️", "Egypt"], ["🐧🧊🌨️", "Antarctica"], ["🏙️🏜️💰", "Dubai"], ["🛕🌊🪔", "Varanasi"],
+    ["🍵🏞️🚂", "Darjeeling"], ["🐼🧱🏮", "China"], ["⏰☔💂", "London"], ["🌋🌺🏄", "Hawaii"],
+    ["🦁🐘🌅", "Africa"], ["🍁🏒🫎", "Canada"]
+  ]},
+  animals: { name: "Animals", icon: "🐾", ask: "Which animal am I?", items: [
+    ["I wear black and white stripes and live in Africa.", "Zebra"],
+    ["I am the tallest animal in the world.", "Giraffe"],
+    ["I am the biggest animal on land and I have a trunk.", "Elephant"],
+    ["I hop around and carry my baby in a pouch.", "Kangaroo"],
+    ["I am a bird that cannot fly, but I swim in icy water.", "Penguin"],
+    ["I stay awake at night and can turn my head almost all the way round.", "Owl"],
+    ["I am called the ship of the desert.", "Camel"],
+    ["I am India's national bird and I dance in the rain.", "Peacock"],
+    ["I am India's national animal.", "Tiger"],
+    ["I am a clever sea mammal who talks in clicks and whistles.", "Dolphin"],
+    ["I have eight arms and three hearts.", "Octopus"],
+    ["I am the fastest runner on land.", "Cheetah"],
+    ["I am a mammal that flies at night and hangs upside down.", "Bat"],
+    ["I can change my colour to match where I sit.", "Chameleon"],
+    ["I am black and white and I munch bamboo all day.", "Panda"],
+    ["I carry my house on my back and move very slowly.", "Snail"],
+    ["I make honey and I dance to show my friends where flowers are.", "Bee"],
+    ["I can copy the words people say.", "Parrot"],
+    ["I won a famous race against a hare.", "Tortoise"],
+    ["I am the king of the jungle.", "Lion"],
+    ["I have a long body, no legs, and I hiss.", "Snake"],
+    ["I give you milk and I say moo.", "Cow"]
+  ]}
+};
+const CATS = ["mixed", "movies", "places", "animals"];
+const AVATARS = ["😀", "👵", "👴", "👩", "👨", "👧", "👦", "🧒", "🐯", "🦊", "🐼", "🦄"];
+const SECONDS = 20;          // time to answer each question
+const POINTS = 10;           // per correct answer
+
+
+// ---------- Helpers ----------
+const app = document.getElementById("app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const PREFIX = "familyfun-club-";
+function newCode() {
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+}
+function buildQuestions(cat, count) {
+  const cats = cat === "mixed" ? ["movies", "places", "animals"] : [cat];
+  const pool = shuffle(cats.flatMap(c => BANK[c].items.map(([clue, answer]) => ({ cat: c, clue, answer }))));
+  return pool.slice(0, Math.min(count, pool.length)).map(q => {
+    const others = shuffle(BANK[q.cat].items.map(x => x[1]).filter(a => a !== q.answer)).slice(0, 3);
+    return { cat: q.cat, clue: q.clue, answer: q.answer, options: shuffle([q.answer, ...others]) };
+  });
+}
+
+// ---------- Local state ----------
+let myId = store.get("ffc-id", null);
+if (!myId) { myId = Math.random().toString(36).slice(2, 12); store.set("ffc-id", myId); }
+
+const S = {
+  name: store.get("ffc-name", ""),
+  avatar: store.get("ffc-avatar", AVATARS[0]),
+  cat: store.get("ffc-cat", "mixed"),
+  count: store.get("ffc-count", 10),
+  code: (new URLSearchParams(location.search).get("game") || "").toUpperCase().slice(0, 4),
+  role: null,        // "host" | "player" | null
+  game: null,        // shared game state (from the host)
+  endsAt: 0,         // local clock time when the current question closes
+  myPick: null,      // { q, pick }
+  error: "",
+  status: "",        // connecting / lost messages
+  peer: null,
+  conn: null         // player's connection to the host
+};
+
+// ---------- Host: the host's phone holds the game and sends it to everyone ----------
+const H = { conns: new Set(), answers: [], picks: {}, tick: null, wake: null };
+
+function hostGame() {
+  if (!saveProfile()) return;
+  S.status = "Creating game…"; render();
+  const code = newCode();
+  const peer = new Peer(PREFIX + code);
+  peer.on("open", () => {
+    S.peer = peer; S.role = "host"; S.code = code; S.status = "";
+    const qs = buildQuestions(S.cat, S.count);
+    H.answers = qs.map(q => q.answer);
+    S.game = {
+      status: "lobby", total: qs.length, qIndex: -1, answer: null, remaining: 0,
+      questions: qs.map(({ cat, clue, options }) => ({ cat, clue, options })),
+      players: [{ id: myId, name: S.name, avatar: S.avatar, score: 0, correct: 0, answered: -1, online: true, host: true }]
+    };
+    history.replaceState(null, "", "?game=" + code);
+    keepAwake();
+    clearInterval(H.tick); H.tick = setInterval(hostTick, 250);
+    render();
+  });
+  peer.on("connection", conn => {
+    conn.on("open", () => { H.conns.add(conn); });
+    conn.on("data", msg => hostReceive(conn, msg));
+    conn.on("close", () => {
+      H.conns.delete(conn);
+      const p = S.game?.players.find(x => x.id === conn.playerId);
+      if (p) { p.online = false; broadcast(); }
+    });
+  });
+  peer.on("disconnected", () => { try { peer.reconnect(); } catch (e) {} });  // keep the code reachable for late joiners
+  peer.on("error", err => {
+    if (err.type === "unavailable-id") { peer.destroy(); hostGame(); return; }  // code already taken, pick another
+    S.status = ""; S.error = "Connection problem: " + err.type + ". Check your internet and try again.";
+    if (!S.game) { peer.destroy(); }
+    render();
+  });
+}
+
+function hostReceive(conn, msg) {
+  const g = S.game;
+  if (!g || !msg || typeof msg !== "object") return;
+  if (msg.type === "join") {
+    const id = String(msg.id || "").slice(0, 20), name = String(msg.name || "Player").slice(0, 20), avatar = String(msg.avatar || "😀").slice(0, 8);
+    if (!id) return;
+    conn.playerId = id;
+    let p = g.players.find(x => x.id === id);
+    if (p) Object.assign(p, { name, avatar, online: true });
+    else g.players.push({ id, name, avatar, score: 0, correct: 0, answered: -1, online: true });
+    broadcast();
+  } else if (msg.type === "answer") {
+    recordAnswer(conn.playerId, msg.q, msg.pick);
+  }
+}
+
+function recordAnswer(id, q, pick) {
+  const g = S.game, p = g.players.find(x => x.id === id);
+  if (!p || g.status !== "question" || q !== g.qIndex || p.answered === q) return;
+  if (!g.questions[q].options.includes(pick)) return;
+  p.answered = q; H.picks[id] = pick;
+  broadcast();
+}
+
+function hostTick() {
+  const g = S.game;
+  updateTimer();
+  if (!g || g.status !== "question") return;
+  const here = g.players.filter(p => p.online);
+  const allIn = here.length > 0 && here.every(p => p.answered === g.qIndex);
+  if (!allIn && Date.now() < S.endsAt) return;
+  const key = H.answers[g.qIndex];
+  g.players.forEach(p => { if (H.picks[p.id] === key) { p.score += POINTS; p.correct += 1; } });
+  g.status = "reveal"; g.answer = key;
+  broadcast();
+}
+
+function hostNext() {
+  const g = S.game, next = g.qIndex + 1;
+  if (next >= g.total) { g.status = "done"; broadcast(); return; }
+  g.status = "question"; g.qIndex = next; g.answer = null; H.picks = {};
+  S.endsAt = Date.now() + SECONDS * 1000;
+  broadcast();
+}
+
+function broadcast() {
+  const g = S.game;
+  g.remaining = g.status === "question" ? Math.max(0, S.endsAt - Date.now()) : 0;
+  const msg = { type: "state", game: g };
+  H.conns.forEach(c => { try { c.send(msg); } catch (e) {} });
+  render();
+}
+
+async function keepAwake() {
+  try { H.wake = await navigator.wakeLock?.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => { if (S.role === "host" && document.visibilityState === "visible") keepAwake(); });
+
+// ---------- Player: connect to the host's phone ----------
+function joinGame(code) {
+  if (!saveProfile()) return;
+  code = (code || "").toUpperCase().trim();
+  if (code.length !== 4) { S.error = "The game code has 4 letters or numbers."; render(); return; }
+  S.code = code; S.error = ""; S.status = "Connecting to the game…"; render();
+  if (S.peer) { try { S.peer.destroy(); } catch (e) {} }
+  const peer = new Peer();
+  S.peer = peer;
+  let opened = false;
+  const giveUp = setTimeout(() => {
+    if (opened) return;
+    S.status = ""; S.error = `Couldn't reach game ${code}. Check the code, and make sure the host still has the game open.`;
+    try { peer.destroy(); } catch (e) {}
+    render();
+  }, 15000);
+  peer.on("open", () => {
+    const conn = peer.connect(PREFIX + code, { reliable: true });
+    S.conn = conn;
+    conn.on("open", () => {
+      opened = true; clearTimeout(giveUp);
+      S.role = "player"; S.status = "";
+      history.replaceState(null, "", "?game=" + code);
+      conn.send({ type: "join", id: myId, name: S.name, avatar: S.avatar });
+    });
+    conn.on("data", msg => {
+      if (!msg || msg.type !== "state") return;
+      const prev = S.game; S.game = msg.game;
+      S.endsAt = Date.now() + (msg.game.remaining || 0);
+      if (prev && prev.qIndex !== S.game.qIndex) S.myPick = null;
+      render();
+    });
+    conn.on("close", () => {
+      if (S.role !== "player") return;
+      S.status = "lost"; render();
+    });
+  });
+  peer.on("error", err => {
+    clearTimeout(giveUp);
+    S.status = "";
+    S.error = err.type === "peer-unavailable"
+      ? `No game found with code ${code}. Check the code, and make sure the host still has the game open.`
+      : "Connection problem: " + err.type + ". Check your internet and try again.";
+    if (!opened) { S.game = null; S.role = null; }
+    render();
+  });
+  clearInterval(H.tick); H.tick = setInterval(updateTimer, 250);
+}
+
+// ---------- Shared actions ----------
+function pick(option) {
+  const g = S.game;
+  if (!g || g.status !== "question" || S.myPick?.q === g.qIndex) return;
+  S.myPick = { q: g.qIndex, pick: option };
+  if (S.role === "host") recordAnswer(myId, g.qIndex, option);
+  else { try { S.conn.send({ type: "answer", q: g.qIndex, pick: option }); } catch (e) {} render(); }
+}
+
+function saveProfile() {
+  const n = document.getElementById("name");
+  if (n) S.name = n.value.trim().slice(0, 20);
+  if (!S.name) { S.error = "Type your name first."; render(); return false; }
+  store.set("ffc-name", S.name); store.set("ffc-avatar", S.avatar);
+  return true;
+}
+
+function leave() {
+  try { S.peer?.destroy(); } catch (e) {}
+  clearInterval(H.tick); H.conns.clear();
+  try { H.wake?.release(); } catch (e) {}
+  Object.assign(S, { peer: null, conn: null, game: null, role: null, code: "", myPick: null, status: "", error: "" });
+  history.replaceState(null, "", location.pathname);
+  render();
+}
+
+// ---------- Views ----------
+const isHost = () => S.role === "host";
+function ranked() {
+  return S.game.players.slice().sort((a, b) => b.score - a.score || b.correct - a.correct);
+}
+function board(showAnswered) {
+  const g = S.game;
+  return `<div class="list">${ranked().map((p, i) => `
+    <div class="p ${p.id === myId ? "first" : ""}">
+      <span class="rank">${i + 1}</span><span class="av" aria-hidden="true">${esc(p.avatar)}</span>
+      <span class="nm">${esc(p.name)}${p.id === myId ? " (you)" : ""}${p.host ? ' <span class="tag">host</span>' : ""}${p.online ? "" : ' <span class="tag">offline</span>'}</span>
+      ${showAnswered ? `<span class="tag ${p.answered === g.qIndex ? "done" : ""}">${p.answered === g.qIndex ? "answered" : "thinking…"}</span>` : `<span class="pts">${p.score}</span>`}
+    </div>`).join("")}</div>`;
+}
+
+function viewStart() {
+  return `
+    <header class="brand"><div class="mark" aria-hidden="true">🎉</div>
+      <div><h1>FamilyFun Club</h1><p>Guess the movie, place or animal, live with your family.</p></div></header>
+    <section class="panel">
+      <h2>Who are you?</h2>
+      <input type="text" id="name" maxlength="20" placeholder="Your name, e.g. Dadi or Riya" value="${esc(S.name)}" aria-label="Your name">
+      <div class="avatars" role="group" aria-label="Pick an avatar">
+        ${AVATARS.map(a => `<button type="button" data-act="avatar" data-av="${a}" aria-pressed="${a === S.avatar}" aria-label="Avatar ${a}">${a}</button>`).join("")}
+      </div>
+      ${S.error ? `<p class="err" role="alert">${esc(S.error)}</p>` : ""}
+      ${S.status ? `<p class="note" role="status">${esc(S.status)}</p>` : ""}
+    </section>
+    <section class="panel">
+      <h2>Join a game</h2>
+      <div class="row">
+        <input type="text" id="code" class="code" maxlength="4" placeholder="CODE" value="${esc(S.code)}" aria-label="Game code" autocomplete="off">
+        <button class="btn" data-act="join" ${S.status ? "disabled" : ""}>Join</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Or host a new game</h2>
+      <div class="chips">${CATS.map(c => `<button type="button" class="chip" data-act="cat" data-cat="${c}" aria-pressed="${S.cat === c}">
+        <span class="e" aria-hidden="true">${c === "mixed" ? "🎲" : BANK[c].icon}</span>${c === "mixed" ? "Mix of all" : BANK[c].name}</button>`).join("")}</div>
+      <div class="label">Number of questions</div>
+      <div class="seg" role="group" aria-label="Number of questions">${[5, 10, 15].map(n => `<button type="button" data-act="count" data-n="${n}" aria-pressed="${S.count === n}">${n}</button>`).join("")}</div>
+      <button class="btn wide" data-act="host" ${S.status ? "disabled" : ""}>Host game</button>
+      <p class="note">Everyone answers the same question at the same time: ${SECONDS} seconds each, ${POINTS} points for a correct answer. The host's phone runs the game, so keep it open with the screen on.</p>
+    </section>`;
+}
+
+function viewLost() {
+  return `<section class="panel center">
+    <h2>Lost connection to the host</h2>
+    <p class="note">Your score is safe on the host's phone. Tap Rejoin to carry on.</p>
+    <button class="btn wide" data-act="rejoin">Rejoin game ${esc(S.code)}</button>
+    <button class="btn ghost" data-act="leave">Leave</button>
+  </section>`;
+}
+
+function viewLobby() {
+  const link = location.origin + location.pathname + "?game=" + S.code;
+  const wa = "https://wa.me/?text=" + encodeURIComponent(`Join our FamilyFun Club game! Code ${S.code}: ${link}`);
+  const n = S.game.players.length;
+  return `
+    <section class="panel center">
+      <p class="label">Game code</p>
+      <div class="bigcode">${esc(S.code)}</div>
+      ${isHost() ? `<p class="note">Family members open the link, type their name and join.</p>
+      <div class="row" style="justify-content:center">
+        <a class="btn" href="${wa}" target="_blank" rel="noopener">Share on WhatsApp</a>
+        <button class="btn ghost" data-act="copy" data-link="${esc(link)}">Copy link</button>
+      </div>` : `<p class="note">You're in! Waiting for the host to start…</p>`}
+    </section>
+    <section class="panel">
+      <h2>${n} ${n === 1 ? "player" : "players"} here</h2>
+      ${board(false)}
+      ${isHost() ? `<button class="btn wide" data-act="next">Start game</button>` : ""}
+      <button class="btn ghost" data-act="leave">Leave game</button>
+    </section>`;
+}
+
+function viewQuestion() {
+  const g = S.game, q = g.questions[g.qIndex], reveal = g.status === "reveal";
+  const mine = S.myPick && S.myPick.q === g.qIndex ? S.myPick.pick : null;
+  const opts = q.options.map(o => {
+    let cls = "opt";
+    if (reveal) { if (o === g.answer) cls += " right"; else if (o === mine) cls += " wrong"; }
+    else if (o === mine) cls += " picked";
+    return `<button class="${cls}" data-act="pick" data-opt="${esc(o)}" ${reveal || mine ? "disabled" : ""}>${esc(o)}</button>`;
+  }).join("");
+  let foot;
+  if (reveal) {
+    const ok = mine === g.answer;
+    foot = `<p class="feedback ${ok ? "ok" : "no"}" role="status">${ok ? `Correct! +${POINTS}` : mine ? `Not quite. It was ${esc(g.answer)}.` : `Time's up. It was ${esc(g.answer)}.`}</p>
+      ${board(false)}
+      ${isHost() ? `<button class="btn wide" data-act="next">${g.qIndex + 1 >= g.total ? "See the winner" : "Next question"}</button>` : `<p class="note center">Waiting for the host…</p>`}`;
+  } else {
+    foot = `${mine ? `<p class="note center">Locked in! Waiting for everyone…</p>` : ""}${board(true)}`;
+  }
+  return `
+    <section class="panel">
+      <div class="progress"><span>${BANK[q.cat].icon} ${BANK[q.cat].name}</span><span>Question ${g.qIndex + 1} of ${g.total}</span></div>
+      ${reveal ? "" : `<div class="timer" aria-hidden="true"><div id="bar" style="width:100%"></div></div>`}
+      <div class="clue"><div class="${q.cat === "animals" ? "text" : "emoji"}">${esc(q.clue)}</div><div class="ask">${BANK[q.cat].ask}</div></div>
+      <div class="options">${opts}</div>
+      ${foot}
+    </section>`;
+}
+
+function viewDone() {
+  const r = ranked(), top = r[0];
+  const winners = r.filter(p => p.score === top.score && p.correct === top.correct);
+  const title = winners.length > 1 ? `Tie between ${winners.map(w => esc(w.name)).join(" and ")}!` : `${esc(top.name)} wins!`;
+  return `
+    <section class="panel winner center">
+      <div class="big" aria-hidden="true">${winners.length > 1 ? "🤝" : esc(top.avatar)}</div>
+      <h1>${title}</h1>
+      <p class="note">Most points wins. Same points? Most correct answers. Still tied, you share the crown.</p>
+    </section>
+    <section class="panel">${board(false)}
+      <button class="btn wide" data-act="leave">Back to start</button></section>`;
+}
+
+function render() {
+  const active = document.activeElement?.id;
+  const nameVal = document.getElementById("name")?.value;
+  const codeVal = document.getElementById("code")?.value;
+  const g = S.game;
+  app.innerHTML = S.status === "lost" ? viewLost()
+    : !g || !S.role ? viewStart()
+    : g.status === "lobby" ? viewLobby()
+    : g.status === "done" ? viewDone()
+    : viewQuestion();
+  if (nameVal != null && document.getElementById("name")) document.getElementById("name").value = nameVal;
+  if (codeVal != null && document.getElementById("code")) document.getElementById("code").value = codeVal;
+  if (active && document.getElementById(active)) document.getElementById(active).focus();
+  updateTimer();
+}
+
+function updateTimer() {
+  const bar = document.getElementById("bar");
+  if (!bar) return;
+  const left = Math.max(0, S.endsAt - Date.now());
+  bar.style.width = (100 * left / (SECONDS * 1000)) + "%";
+}
+
+app.addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  const keepName = () => { const n = document.getElementById("name"); if (n) S.name = n.value; };
+  switch (b.dataset.act) {
+    case "avatar": keepName(); S.avatar = b.dataset.av; render(); break;
+    case "cat": keepName(); S.cat = b.dataset.cat; store.set("ffc-cat", S.cat); render(); break;
+    case "count": keepName(); S.count = +b.dataset.n; store.set("ffc-count", S.count); render(); break;
+    case "host": S.error = ""; hostGame(); break;
+    case "join": joinGame(document.getElementById("code").value); break;
+    case "rejoin": S.status = ""; joinGame(S.code); break;
+    case "next": if (isHost()) hostNext(); break;
+    case "pick": pick(b.dataset.opt); break;
+    case "leave": leave(); break;
+    case "copy":
+      try { await navigator.clipboard.writeText(b.dataset.link); b.textContent = "Copied!"; }
+      catch (err) { b.textContent = b.dataset.link; }
+      break;
+  }
+});
+
+render();
+</script>
+</body>
+</html>
